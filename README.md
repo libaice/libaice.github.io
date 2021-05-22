@@ -1,18 +1,5 @@
-# libaice.github.io
-### SHOW it
-#### the first line so
+## 个人建站
 
-
-As a result, news readers become overwhelmed. According to a 2019 report from the Reuters Institute for the Study of Journalism, 35% of respondents in the U.K., and 41% in the U.S., actively avoided the news. While news consumption briefly jumped after the pandemic hit, the Institute found a “significant increase” in news avoidance between April and May, with 59% of respondents saying they avoid the news at least “sometimes.”
-
-
-This is a git [(my writting article)](git.md)
-
-and this a link to contract [others](JS/index.html)
-
- # subheader
-
- a new line to show
-
- ## seconed
-  ADd a new line!
+---
+写作是是一个，不断积累，不断成长的过程。
+回顾这几年的写作经历，从2018年18岁生日后开通第一个微信公众号，在微信公众平台写过，在印象笔记写过，在锤子便签写过(现在记录800条）
