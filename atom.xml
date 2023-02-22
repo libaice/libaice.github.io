@@ -6,7 +6,7 @@
   <link href="http://libaice.com/atom.xml" rel="self"/>
   
   <link href="http://libaice.com/"/>
-  <updated>2023-02-22T13:25:13.194Z</updated>
+  <updated>2023-02-22T14:14:00.041Z</updated>
   <id>http://libaice.com/</id>
   
   <author>
@@ -17,12 +17,20 @@
   <generator uri="https://hexo.io/">Hexo</generator>
   
   <entry>
-    <title>关于ve(3,3)的一些思考</title>
-    <link href="http://libaice.com/2023/02/22/%E5%85%B3%E4%BA%8Eve-3-3-%E7%9A%84%E4%B8%80%E4%BA%9B%E6%80%9D%E8%80%83/"/>
-    <id>http://libaice.com/2023/02/22/%E5%85%B3%E4%BA%8Eve-3-3-%E7%9A%84%E4%B8%80%E4%BA%9B%E6%80%9D%E8%80%83/</id>
+    <title>关于ve(3,3)的一些玩法与探索</title>
+    <link href="http://libaice.com/2023/02/22/%E5%85%B3%E4%BA%8Eve(3,3)%E7%9A%84%E4%B8%80%E4%BA%9B%E7%8E%A9%E6%B3%95%E4%B8%8E%E6%8E%A2%E7%B4%A2/"/>
+    <id>http://libaice.com/2023/02/22/%E5%85%B3%E4%BA%8Eve(3,3)%E7%9A%84%E4%B8%80%E4%BA%9B%E7%8E%A9%E6%B3%95%E4%B8%8E%E6%8E%A2%E7%B4%A2/</id>
     <published>2023-02-22T10:57:24.000Z</published>
-    <updated>2023-02-22T13:25:13.194Z</updated>
+    <updated>2023-02-22T14:14:00.041Z</updated>
     
+    <content type="html"><![CDATA[<ol><li>最近看到bsc上的<a href="https://thena.fi/">thena</a> , op上面的<a href="https://app.velodrome.finance/">velo</a>, arb 上面的 <a href="https://solidlizard.finance/">solidizard</a> 都在fork AC 之前在Fantom 上的发行dex Solidily， Solidly 是首个创造并使用<a href="https://andrecronje.medium.com/ve-3-3-44466eaa088b">ve(3,3) 模型</a>的dapp,看到各个链上的apr也比较高，挖了一点点项目代币，也研究了一下ve(3,3)的运作模型。</li></ol>]]></content>
+    
+    
+      
+      
+    <summary type="html">&lt;ol&gt;
+&lt;li&gt;最近看到bsc上的&lt;a href=&quot;https://thena.fi/&quot;&gt;thena&lt;/a&gt; , op上面的&lt;a href=&quot;https://app.velodrome.finance/&quot;&gt;velo&lt;/a&gt;, arb 上面的 &lt;a href=&quot;https://s</summary>
+      
     
     
     
