@@ -1,0 +1,393 @@
+---
+title: PolyMarket 预测市场是如何运转的 03
+description: PolyMarket 链上合约模块解析
+date: "2025-12-29"
+---
+
+
+
+前面发了很大的来聊，Polymarket 的链下订单簿撮合系统是如何设计的，接下来就是更重要的合约模块， 包括链上结算部分以及最终输出结果的Oracle 更新结果的逻辑。
+
+
+
+先从一笔我的真实的交易开始看起。
+
+[https://polygonscan.com/tx/0x33f953bd2804d5df91c9fef1e9c89b20c19dd1ccaf4b3f03251fb1639352addb](https://polygonscan.com/tx/0x33f953bd2804d5df91c9fef1e9c89b20c19dd1ccaf4b3f03251fb1639352addb)
+
+
+<img src="/images/09-01.png" alt="09-01" />
+
+在这个市场上 我花了2美元， 下注马杜罗在1.31 号直接会被审判， 如果结果胜利， 我将在结束的时候，得到25 美元。
+
+---
+
+<img src="/images/09-02.png" alt="09-02" />
+
+---
+
+
+
+## 1 交易细节
+
+这笔交易交互的合约是 `Polymarket Fee Module`合约。
+
+交易细节，把用户托管账户中的USDC转出来，转给了`Polymarket: CTF Exchange` 合约， 然后这笔钱在这比交易里面，给到了`Polymarket: Conditional Tokens`。
+
+之后后对应的`mint` 出来，对应的 数量的份额代币。
+
+
+
+交易撮合完成，成交上链，两边的概率是配平的。
+
+先看计算逻辑,投注的是YES，为什么我的2美元得到`28571427` 这个数量的代币呢。
+
+```
+YES/NO 代币的精度 1e6
+ 
+首先去除精度， 28571427 代币除去1e6 的精度，就是28.57 个代币的yes
+
+2美元得到28.57 个YES Token, 那么
+
+* 2为总值
+* 28.57  为数量
+* 价格 * 数量 = 总值 
+* 价格 = 总值 / 数量
+
+平均单个YES 的价格是  (2 /28.57  ) =0.070003500
+
+即我的买入的平均价格和概率
+```
+
+来看我的对手盘, 这笔交易里面 ，和我撮合的是卖YES 的人， 他的卖单(0.07)价格的卖YES，被我买掉了，所有我的USDC 给到了他。
+
+接下来再看一笔，撮合的订单。
+
+<img src="/images/09-03.png" alt="09-03" />
+
+
+
+现在是一笔YES NO 撮合的交易， 在这里交易中， 同时mint 出来 `24688880` 的两种不同的condition Token。然后立马，YES和NO 被拆分开。
+
+他们的价格不一样，但是通过撮合，获取到的是不一样的代币。
+
+```
+* 0x0f8F5471地址 使用  22.21 USDC, 购买到 24.68888 代币
+	他的概率，22.219992/24.68888 = 0.9
+	
+* 0x7F69983e 地址 使用 2.46 USDC, 购买的 24.68888 反向代币
+	他的概率 2.468888 / 24.68888 = 0.1
+
+最终 YES + NO 的
+* 概率(价格) 总和 = 1
+* 撮合交易，对手方得到的数量一致的shares
+```
+
+
+
+
+---
+## 2. 合约拆分
+
+通过前面的分析， 对这套合约的业户 大概有了一个基本的理解，接下来就把这合约进行拆分成为一个个大模块，组成一个比较完整的架构系统。
+
+* 用户入金是使用的Genosis 的托管账户
+* 交互的合约是  Fee Module 合约
+* Fee Module 直接走到 `CTFExchange` 进行订单的提交
+* 订单成交后， 会给用户对应的生成 (mint)/转账 对应的condition token 
+* conditionToken 符合 yes =no  数量一致
+* 最终结算结果 通过UMA Oracle 进行 结果的喂入，这个结果，可以进行仲裁。
+* 结果更新后，用户预测成功的一侧，shares 价格为1，失败的一侧 ，价格为0  
+
+<img src="/images/09-04.png" alt="09-04" />
+
+
+---
+## 3. EIP1155 - Condition Token
+
+有了这些前置的知识，接下来再来梳理一个个子模块，就很清晰了，知道他在这个系统中做了什么事情，起什么作用。
+
+
+
+首先是CTF，把 Condition Token 可以理解为所有 Polymarket 发行的shares 的标准和基础模版。
+
+本质上，所有的Yes 和No, 都是一个个的ERC1155 token，这个token 可以有很多的tokenId，每一个tokenId 都可以有 很多的同质化代币。
+
+
+
+其中最核心的与代替的交互无非是下面这几个接口中的操作
+
+```solidity
+abstract contract IAssetOperations {
+	 // 查询指定账户的 share token(YES/NO) 的余额
+    function _getBalance(uint256 tokenId) internal virtual returns (uint256);
+		
+		// 指定id 进行token 的转账, 主要是用户和交易所之间的转账
+    function _transfer(address from, address to, uint256 id, uint256 value) internal virtual;
+		
+		// 铸造token 前面看到过，token 铸造出来 自动进行 splitPosition 的操作，分成对应的两部分
+    function _mint(bytes32 conditionId, uint256 amount) internal virtual;
+		
+		// 代币销毁， 把 YES+NO 合并回 USDC (Merge)
+    function _merge(bytes32 conditionId, uint256 amount) internal virtual;
+}
+
+```
+
+核心的就这几个， 剩下的所有的代币和操作，都是在这个模板的基础上进行各式各样的组合的。
+
+所有YES/NO 代币定价的逻辑都是在下面的`CTF Exchange` 交易合约进行实现的。
+
+Condition Token 核心的功能就是要保障
+
+> * mint 出来的 YES 和NO 数量是一致的
+> * 销毁 YES/NO 数量也是一致的
+
+
+
+最终链上的实现，可以参考
+
+[https://polygonscan.com/address/0x4d97dcd97ec945f40cf65f87097ace5ea0476045#code](https://polygonscan.com/address/0x4d97dcd97ec945f40cf65f87097ace5ea0476045#code)
+
+
+---
+## 4. CTF Exchanges
+
+CTF 交易所，主要做的就是把链下订单簿撮合的订单，进行最终的上链结算。
+
+### 4.1 registerToken 
+
+管理员通过condition Token 的tokenId ,conditionId 和complement(与cindition token id 反向的token id) 进行市场的注册。
+
+```solidity
+ function registerToken(uint256 token, uint256 complement, bytes32 conditionId) external onlyAdmin 
+```
+
+
+
+###  4.2 订单撮合结果上链
+
+和前面文章中介绍的一样，最终在链下的订单簿完成撮合后进行， 链上最终的数据的结算。
+
+下面是一个订单的具体结构， 和撮合的方法。
+
+```solidity
+1. 订单校验(验证maker taker 地址，验证签名)
+
+2. token转移， 先把taker 吃单人，的资产，转移到exchange 合约， 和上面 我的交易浏览器展示结果一致 
+
+3. 循环撮合makers 的订单， _fillMakerOrders() , 这里面核心是 _executeMatchCall ， 撮合并执行调用的方法。
+
+4. 撮合的订单类型，也就是我们在前面看到的两种类型，还有另外一种是合并销毁
+	* COMPLEMENTARY 标准撮合，只设计token的转移，Taker 购买的时候，直接买Maker 挂的卖单
+
+  * MINT 我们上面看到有第二种情况，双方都是买单，都会买到最终同样的数量 YES/NO 代币,他们花     的钱的数量之和，为总的 YES/NO 代币 mint 出来的数量
+
+  * MERGE 合并销毁， 和前面一种情况反过来, 两边都是maker 挂的都是卖单，订单会把两部分进行	  合并销毁，最终还原出原有的USDC，并分给两边。
+  
+  
+
+enum MatchType
+{
+    COMPLEMENTARY,
+    // 1: both buys
+    MINT,
+    // 2: both sells
+    MERGE
+}
+```
+
+
+
+```solidity
+
+struct Order {
+    uint256 salt;
+    address maker;
+    address signer;
+    address taker;
+    uint256 tokenId;
+    uint256 makerAmount;
+    uint256 takerAmount;
+    uint256 expiration;
+    uint256 nonce;
+    uint256 feeRateBps;
+    Side side;
+    SignatureType signatureType;
+    bytes signature;
+}
+ 
+ 
+ function matchOrders(
+        Order memory takerOrder,
+        Order[] memory makerOrders,
+        uint256 takerFillAmount,
+        uint256[] memory makerFillAmounts
+    )
+```
+
+
+
+### 4.3 NegRisk 
+
+之前我们说的，都是单一的一个事件，要么成功，要么失败，对应的根据选择来做结果的预测。
+
+
+
+<img src="/images/09-05.png" alt="09-05" />
+
+但是很多比赛，或者选举，是在几个不同的 人/团队 里面只有一个赢家，那么这些独立的概率之和，应该等于1 。
+
+比如上面的2026年的，世界足球杯赛 结果的预测。
+
+**NegRisk Adapter** 让我们做到了这件事情，核心是通过 `convertPositions` 这个方法，提供一个数学转换通过，将 A 选项的 NO ，等价转化为，其他所有的选项的 YES。
+
+经过这一层的转换，比如我买2026年6月阿根廷赢，最终我的对手盘并不仅仅是买阿根廷输的这些人(NO),  我的对手盘也包括了，看好其他国家，比如法国或者德国的人。
+
+相当于把这些所有的概率全部叠加起来，最后形成=1 的市场结果。
+
+```solidity
+///@ Convert a set of no positions to the complementary set of yes positions plus collateral proportional to
+function convertPositions(bytes32 _marketId, uint256 _indexSet, uint256 _amount) external {
+	  while (index < questionCount) {
+	  		// handle no posiotions
+	      if (noPositionIds.length > 1) {
+	      	  wcol.release(msg.sender, multiplier * amountOut);
+	      }
+	      
+	      // handle yes positions
+	      if (yesPositionIds.length > 0) {
+	        ctf.safeBatchTransferFrom(  address(this), msg.sender, yesPositionIds, Helpers.values(yesPositionIds.length, amountOut), ""
+            );
+	      }
+	  }
+
+}
+```
+
+
+---
+## 5. UMA Oracle
+
+UMA 是一个第三方的 Optimistic Oracle (UMA Oracle )。
+Optimistic 顾名思义， 假设结果是乐观的， 默认选择相信提案者的答案，是正确的。
+
+
+
+* 首先就是initialize(), 根据这个问题来进行初始化questionId  这个questionId 之后会用来做conditionId 的参数进行生成
+* 市场交易阶段，都走的是 `CTF Exchange` 合约, Oracle 在这个周期不参与。
+* Proposer 提案人，提交结果，并需要质押一定的token, 通过`proposePrice` 来更新合约中的数据，Oracle 开始更新结果，之后进入挑战期(Liveness Period )， 挑战期，有异议，会进入仲裁的周期。
+* UMA 决议完成后， 触发resolve() 方法 ， resolve 内部拿到Oracle 喂进来的结果，更新 预测成功的结果，最终将获胜代币进行抵押品 USDC, 进行1:1 的转账。
+
+```solidity
+function proposePrice(
+        address requester,
+        bytes32 identifier,
+        uint256 timestamp,
+        bytes memory ancillaryData,
+        int256 proposedPrice
+    ) external returns (uint256 totalBond);
+```
+
+```solidity
+// 市场创建的方法， 
+function initialize(
+        bytes memory ancillaryData, // 辅助数据
+        address rewardToken, // 收益代币
+        uint256 reward, //收益 数量
+        uint256 proposalBond, // 提案 投票数量
+        uint256 liveness // 调整期
+    ) external returns (bytes32 questionID);
+
+// 决议的方法
+function resolve(bytes32 questionID) external 
+
+// CTFExchange 中 根据决议结果，进行收益分发
+function reportPayouts(bytes32 _requestId, uint256[] calldata _payouts) external onlyOracle 
+```
+
+
+---
+## 6 Fee Module
+
+在CTF Exchange 中， 签名的时候， 会有 `feeRateBps` 这个参数， 在交易所层面，撮合订单时，会严格按照订单中签名的费率扣除费用。
+
+另外还有 `FeeModule` 合约， 允许 Polymarket 实际收取的费用（Operator Fee）低于用户签名的费用（Exchange Fee），并将差额返还给用户。
+
+```solidity
+interface IFeeModule is IFeeModuleEE {
+    function matchOrders(
+        Order memory takerOrder,
+        Order[] memory makerOrders,
+        uint256 takerFillAmount,
+        uint256 takerReceiveAmount,
+        uint256[] memory makerFillAmounts,
+        uint256 takerFeeAmount,
+        uint256[] memory makerFeeAmount
+    ) external;
+
+    function withdrawFees(address to, uint256 id, uint256 amount) external;
+}
+
+```
+
+
+
+
+
+**费用结构**
+
+Polymarket 采用有选择性的费用模型：
+
+* **大部分市场免费**：绝大多数交易市场没有任何交易费用
+
+- **仅 15 分钟加密货币市场收费**：只有这类市场有 taker 费用，用于资助 Maker Rebates 计划 (https://docs.polymarket.com/polymarket-learn/trading/fees) 
+
+
+
+**费用计算公式**：
+
+```
+fee = C × feeRate × (p · (1-p))^exponent
+```
+
+其中：
+
+- **C** = 交易的股份数量
+- **p** = 股份价格（0 到 1 之间）
+- **feeRate** = 0.25
+- **exponent** = 2
+
+根据公式可以看出来， 当费用在50% 的概率的时候， 收取的费用是最高的。
+
+最终从 taker 费用中收集的资金每日会被分配给 做市商market makers，反过来想， 为了刺激流动性， 在15分钟的市场中，想要给这些做市商更多的激励，从taker 里面收取的fee，会每天使用 USDC(交易代币)的方式，分发给这些market makers 。
+
+详情如下:
+
+(https://docs.polymarket.com/polymarket-learn/trading/maker-rebates-program)
+
+![](https://mintcdn.com/polymarket-292d1b1b/YUHnSq4JdekVofRY/polymarket-learn/media/fee_image.png?w=840&fit=max&auto=format&n=YUHnSq4JdekVofRY&q=85&s=be276a6b8aaddef53f5cb08165e76c96)
+
+
+
+
+---
+## 7. 结语
+
+写到这里，真的挺不错的，给自己一个鼓励。
+
+从最高的第一篇关于系统拆分， 到签名的后台撮合引擎拆分搭建，再到这篇文章，从链上智能合约的角度理解预测市场，我觉得对整个系统的玩法以及很熟悉了。
+
+当然还有更多的细节，比如用户进来时刻使用的 Gnosis Safe Wallet 构造 ，EIP712 钱包， UMA Oracle仲裁 流程，这些还可以更细，这些就可以独立调研资料完成。
+
+接下来，就是把更多的时候， 放在构建一些应用上面
+
+* 使用Polymarket 的API 搭建机器人
+* 调用合约进行链上阶段
+* 做一个类似的隐藏+ 链上交割层
+
+下面这些都是很有意思的，当然也要更多的深入社区，发现问题，构建产品解决这些问题。
+
+
+
+继续，未来会更新更多的关于 Prediction Market 的东西，加油。 
+
